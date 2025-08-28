@@ -14,14 +14,13 @@ from sklearn.preprocessing import StandardScaler
 # Streamlit App Config
 # ------------------------------
 st.set_page_config(page_title="Uber NYC Demand Prediction", layout="wide")
-
 st.title("🚖 Uber NYC Demand Analysis & Prediction")
 st.markdown("This app explores Uber trip data in NYC and builds ML models to predict hourly demand.")
 
 # ------------------------------
 # Load Data (Direct Path)
 # ------------------------------
-DATA_PATH = "../Datasets/UberRaw-data-apr14.csv"  # change if needed
+DATA_PATH = "UberRaw-data-apr14.csv"  # adjust if you keep it elsewhere
 df = pd.read_csv(DATA_PATH)
 
 st.subheader("📊 Raw Data Preview")
@@ -61,15 +60,12 @@ hourly['wday_cos'] = np.cos(2 * np.pi * hourly['weekday'] / 7)
 # ------------------------------
 st.subheader("🔎 Exploratory Data Analysis")
 
-# Time series plot
 st.write("Hourly pickups over time:")
 fig, ax = plt.subplots(figsize=(10, 4))
 ax.plot(hourly['Date/Time'], hourly['pickups'], alpha=0.7)
-ax.set_xlabel("Date/Time")
-ax.set_ylabel("Pickups")
+ax.set_xlabel("Date/Time"); ax.set_ylabel("Pickups")
 st.pyplot(fig)
 
-# Heatmap (weekday vs hour)
 pivot = hourly.pivot_table(index="weekday", columns="hour", values="pickups", aggfunc="mean")
 fig, ax = plt.subplots(figsize=(12, 4))
 sns.heatmap(pivot, cmap="viridis", ax=ax)
@@ -89,9 +85,9 @@ st.download_button(
 )
 
 # ------------------------------
-# Model Training
+# Model Training & Comparison
 # ------------------------------
-st.subheader("🤖 Model Training & Evaluation")
+st.subheader("🤖 Model Training & Comparison")
 
 features = ['hour', 'weekday', 'is_weekend', 'hour_sin', 'hour_cos', 'wday_sin', 'wday_cos']
 X = hourly[features]
@@ -105,31 +101,62 @@ scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
-# Choose model
-model_choice = st.selectbox("Select Model", ["RandomForest", "Neural Network"])
+# --- Train RandomForest ---
+rf = RandomForestRegressor(n_estimators=100, random_state=42)
+rf.fit(X_train, y_train)
+rf_preds = rf.predict(X_test)
 
-if model_choice == "RandomForest":
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
-    model.fit(X_train, y_train)
-    preds = model.predict(X_test)
-else:
-    model = MLPRegressor(hidden_layer_sizes=(64, 32), max_iter=500, random_state=42)
-    model.fit(X_train_scaled, y_train)
-    preds = model.predict(X_test_scaled)
+# --- Train Neural Network ---
+mlp = MLPRegressor(hidden_layer_sizes=(64, 32), max_iter=500, random_state=42)
+mlp.fit(X_train_scaled, y_train)
+mlp_preds = mlp.predict(X_test_scaled)
 
-# Evaluation
-mse = mean_squared_error(y_test, preds)
-mae = mean_absolute_error(y_test, preds)
-r2 = r2_score(y_test, preds)
+# --- Evaluate Both Models ---
+results = pd.DataFrame({
+    "Model": ["RandomForest", "Neural Network"],
+    "MSE": [
+        mean_squared_error(y_test, rf_preds),
+        mean_squared_error(y_test, mlp_preds)
+    ],
+    "MAE": [
+        mean_absolute_error(y_test, rf_preds),
+        mean_absolute_error(y_test, mlp_preds)
+    ],
+    "R²": [
+        r2_score(y_test, rf_preds),
+        r2_score(y_test, mlp_preds)
+    ]
+})
 
-st.metric("Mean Squared Error", f"{mse:.2f}")
-st.metric("Mean Absolute Error", f"{mae:.2f}")
-st.metric("R² Score", f"{r2:.2f}")
+st.write("### 📊 Performance Comparison (Table)")
+st.dataframe(results.style.format({"MSE": "{:.2f}", "MAE": "{:.2f}", "R²": "{:.2f}"}))
 
-# Plot actual vs predicted
-st.write("Actual vs Predicted:")
-fig, ax = plt.subplots(figsize=(10, 4))
-ax.plot(y_test.values, label="Actual", alpha=0.7)
-ax.plot(preds, label="Predicted", alpha=0.7)
+# --- Metric Bar Charts ---
+st.write("### 🧮 Metric Bar Charts")
+
+# MSE
+fig, ax = plt.subplots(figsize=(6, 4))
+ax.bar(results["Model"], results["MSE"])
+ax.set_title("MSE by Model"); ax.set_ylabel("MSE")
+st.pyplot(fig)
+
+# MAE
+fig, ax = plt.subplots(figsize=(6, 4))
+ax.bar(results["Model"], results["MAE"])
+ax.set_title("MAE by Model"); ax.set_ylabel("MAE")
+st.pyplot(fig)
+
+# R²
+fig, ax = plt.subplots(figsize=(6, 4))
+ax.bar(results["Model"], results["R²"])
+ax.set_title("R² by Model"); ax.set_ylabel("R²")
+st.pyplot(fig)
+
+# --- Combined Curves ---
+st.write("### 📈 Actual vs Predicted (Both Models)")
+fig, ax = plt.subplots(figsize=(12, 5))
+ax.plot(y_test.values, label="Actual", color="black", alpha=0.7)
+ax.plot(rf_preds, label="RandomForest Predicted", alpha=0.7)
+ax.plot(mlp_preds, label="Neural Net Predicted", alpha=0.7)
 ax.legend()
 st.pyplot(fig)
